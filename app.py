@@ -1,17 +1,27 @@
+import sys
+import os
 from flask import Flask, request, jsonify, render_template, url_for, redirect
 import pandas as pd
 from flask import request, render_template, url_for
 
-from rec_sys_model import recSysModel
+SRC_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'Book-RecSys', 'src'))
+sys.path.append(SRC_PATH)
 
+from models.modules import BookDescriptionEmbeddingSimilarity
+from models.modules import RecommendUsingGraph
+from models.modules import EmbeddingsProducer
+from models.modules import SearchBooksByTitle
 app = Flask(__name__)
 
 
 # Чтение данных из CSV при старте приложения
-df = pd.read_csv('../Datasets/NewDataset.csv')
-metric = pd.read_csv('../Datasets/rating.csv')
-recsys = recSysModel('../Datasets/NewDataset.csv')
-recsys.load('../Datasets/books_embeddings_new_dataset.npy')
+df = pd.read_csv('./data/raw_data/LEHABOOKS.csv')
+metric = pd.read_csv('./data/test_data/rating.csv')
+recsys_with_emb = BookDescriptionEmbeddingSimilarity(
+    "./data/embeddings/books_embeddings_dataset.npy")
+recsys = RecommendUsingGraph("./data/graphs/book_graph.json",recsys_with_emb)
+embedding_producer = EmbeddingsProducer()
+search_books_by_title = SearchBooksByTitle('./data/raw_data/LEHABOOKS.csv')
 
 df = df[df['Description'].notna()]
 
@@ -50,16 +60,15 @@ def book_info(title):
 def book_recommendations(title):
     # Ищем книгу по названию
     book = df[df['Title'] == title].to_dict(orient='records')
-    record = recsys.get_record(title)
 
     if not book:
         return "Book not found", 404
 
     book = book[0]  # Берём первую найденную запись
-    recommended_books = recsys.predict(record, n=10)
+    recommended_books = recsys.find_closest_books(title, n=20)
     recommended_books = [
-        {"name": rec_book, "url": url_for('book_info', title=rec_book),
-         "description": df[df['Title'] == rec_book]['Description'].to_string(index=False)}
+        {"name": rec_book[0], "url": url_for('book_info', title=rec_book[0]),
+         "description": df[df['Title'] == rec_book[0]]['Description'].to_string(index=False)}
         for rec_book in recommended_books
     ]
 
@@ -109,7 +118,7 @@ def rate_book():
 @app.route('/search', methods=['GET'])
 def search():
     title = request.args.get('title')  # Получаем параметр title из строки запроса
-    recommended_books = recsys.closest_title(title, 10)
+    recommended_books = search_books_by_title.closest_title(title, 10)
     recommended_books_links = [
         df[df['Title'] == title] for title in recommended_books
         if not df[df['Title'] == title].empty  # Проверка на существование названия в df
@@ -119,12 +128,13 @@ def search():
 @app.route('/suggest/by_description', methods=['GET'])
 def suggest_by_description():
     description = request.args.get('description')  # Получаем параметр title из строки запроса
-    recommended_books = recsys.predict_by_description( description, n=10)
+    emb = embedding_producer.create_embedding(description)
+    recommended_books = recsys_with_emb.recommend_by_embedding(emb, n=20)
     recommended_books = [
-        {"name": rec_book, "url": url_for('book_info', title=rec_book),
-         "description": df[df['Title'] == rec_book]['Description'].to_string(index=False)}
+        {"name": rec_book[0], "url": url_for('book_info', title=rec_book[0]),
+         "description": df[df['Title'] == rec_book[0]]['Description'].to_string(index=False)}
         for rec_book in recommended_books
-        if not df[df['Title'] == rec_book].empty
+        if not df[df['Title'] == rec_book[0]].empty
     ]
 
     return render_template('book_recommendations.html', recommended_books=recommended_books)
