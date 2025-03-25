@@ -80,12 +80,11 @@ def book_metric(title):
 
     if not book:
         return "Book not found", 404
-    record = recsys.get_record(title)
-    book = book[0]  # Берём первую (и единственную) найденную запись
-    recommended_books = recsys.predict(record, n=100)
+    book = book[0]
+    recommended_books = recsys.find_closest_books(title, n=100)
     recommended_books = [
-        {"name": rec_book, "url": url_for('book_info', title=rec_book),
-         "description":  df[df['Title'] == rec_book]['Description'].to_string(index=False)}
+        {"name": rec_book[0], "url": url_for('book_info', title=rec_book[0]),
+         "description":  df[df['Title'] == rec_book[0]]['Description'].to_string(index=False)}
         for rec_book in recommended_books
     ]
 
@@ -111,7 +110,7 @@ def rate_book():
     print(metric)
 
     # Сохранение изменений в CSV
-    metric.to_csv('../Datasets/rating.csv', index=False)
+    metric.to_csv('./data/test_data/rating.csv', index=False)
     return jsonify({"message": "Rating added successfully"})
 
 
@@ -129,7 +128,7 @@ def search():
 def suggest_by_description():
     description = request.args.get('description')  # Получаем параметр title из строки запроса
     emb = embedding_producer.create_embedding(description)
-    recommended_books = recsys_with_emb.recommend_by_embedding(emb, n=20)
+    recommended_books = recsys_with_emb.recommend_by_embedding(emb.T, n=20)
     recommended_books = [
         {"name": rec_book[0], "url": url_for('book_info', title=rec_book[0]),
          "description": df[df['Title'] == rec_book[0]]['Description'].to_string(index=False)}
