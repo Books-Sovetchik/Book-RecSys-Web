@@ -3,6 +3,12 @@ import os
 from flask import Flask, request, jsonify, render_template, url_for, redirect
 import pandas as pd
 from flask import request, render_template, url_for
+import logging
+import flask_login
+
+from flask_sqlalchemy import SQLAlchemy
+from models import User
+
 
 SRC_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'Book-RecSys', 'src'))
 sys.path.append(SRC_PATH)
@@ -12,6 +18,19 @@ from models.modules import RecommendUsingGraph
 from models.modules import EmbeddingsProducer
 from models.modules import SearchBooksByTitle
 app = Flask(__name__)
+
+logging.basicConfig(
+    level=logging.INFO,  # Логи будут выводиться на уровне INFO
+    handlers=[
+        logging.FileHandler("flask_requests.log"),  # Запись логов в файл
+        logging.StreamHandler()  # Вывод логов в консоль
+    ]
+)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql+psycopg2://postgres:2006yura@localhost/book_recsys_users'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+db = SQLAlchemy(app)
 
 
 # Чтение данных из CSV при старте приложения
@@ -105,9 +124,6 @@ def rate_book():
 
     # Объединение новой строки с существующим DataFrame
     metric = pd.concat([metric, new_row], ignore_index=True)
-
-    # Проверка содержимого DataFrame перед сохранением
-    print(metric)
 
     # Сохранение изменений в CSV
     metric.to_csv('./data/test_data/rating.csv', index=False)

@@ -1,0 +1,18 @@
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:3000
+ * Running on http://10.55.10.26:3000
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug: * Restarting with watchdog (fsevents)
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:3000
+ * Running on http://10.55.10.26:3000
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug: * Restarting with watchdog (fsevents)
+WARNING:werkzeug: * Debugger is active!
+INFO:werkzeug: * Debugger PIN: 117-495-679
+INFO:werkzeug:127.0.0.1 - - [14/Apr/2025 13:40:04] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [14/Apr/2025 13:40:08] "GET /search?title= HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [14/Apr/2025 13:40:08] "GET /suggest/by_description?description= HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [14/Apr/2025 13:40:11] "GET /book/Classical%20Mythology HTTP/1.1" 200 -
