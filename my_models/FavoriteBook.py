@@ -1,4 +1,5 @@
-from  my_models import db
+from my_models import db
+
 
 class FavoriteBook(db.Model):
     table_name = 'FavoriteBook'
