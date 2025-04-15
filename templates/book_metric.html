@@ -1,12 +1,8 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ book.Title }} - Metrics</title>
-    <!-- Подключение Bootstrap -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
+{% extends "base.html" %}
+
+{% block title %}Books List{% endblock %}
+
+{% block content %}
 <body>
     <div class="container my-5">
         <h1 class="mb-4">{{ book.Title }} - Metrics</h1>
@@ -79,3 +75,4 @@
     </script>
 </body>
 </html>
+{% endblock %}

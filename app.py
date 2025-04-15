@@ -7,7 +7,9 @@ import logging
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from my_models import db
-
+from my_models.User import User
+from my_models.FavoriteBook import FavoriteBook
+from my_models.TappedBook import TappedBook
 
 from flask_sqlalchemy import SQLAlchemy
 
@@ -28,7 +30,6 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
 
 # Import User model after db initialization
-from my_models import User
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -36,7 +37,7 @@ login_manager.login_view = 'login'
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    return db.session.get(User, user_id)
 
 # Чтение данных из CSV при старте приложения
 df = pd.read_csv('./data/raw_data/LEHABOOKS.csv')
@@ -76,6 +77,9 @@ def book_info(title):
     book = book[0]
     if not book:
         return "Book not found", 404
+    if current_user.is_authenticated:
+        tapped_book = TappedBook(book_title=book['Title'], user_id=current_user.id)
+        db.session.add(tapped_book)
     return render_template('book_info.html', book=book)
 
 @app.route('/book/rec/<title>', methods=['GET'])
@@ -93,7 +97,6 @@ def book_recommendations(title):
          "description": df[df['Title'] == rec_book[0]]['Description'].to_string(index=False)}
         for rec_book in recommended_books
     ]
-
     return render_template('book_recommendations.html', recommended_books=recommended_books)
 
 @app.route('/metric/<title>', methods=['GET'])
@@ -133,6 +136,21 @@ def rate_book():
     # Сохранение изменений в CSV
     metric.to_csv('./data/test_data/rating.csv', index=False)
     return jsonify({"message": "Rating added successfully"})
+
+@app.route('/like', methods=['POST'])
+@login_required
+def like_book():
+    title = request.form.get('title')
+    existing = FavoriteBook.query.filter_by(book_title=title, user_id=current_user.id).first()
+    if existing is None:
+        favorite_book = FavoriteBook(book_title=title, user_id=current_user.id)
+        db.session.add(favorite_book)
+        db.session.commit()
+        flash("Book added successfully", "success")
+    else:
+        flash("You already liked this book", "info")
+    return redirect(url_for('book_info', title=title))
+
 
 @app.route('/search', methods=['GET'])
 def search():
