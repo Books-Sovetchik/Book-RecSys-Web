@@ -67,6 +67,29 @@ def home(page=1):
     return render_template('index.html', books=books, page=page, total_pages=total_pages)
 
 
+@app.route('/favorite/page/<int:page>', methods=['GET'])
+@app.route('/favorite/page/<int:page>', methods=['GET'])
+def favorite_books(page=1):
+    favorites = FavoriteBook.query.filter_by(user_id=current_user.id).all()
+    favorite_titles = [f.book_title for f in favorites]
+    filtered_df = df[df['Title'].isin(favorite_titles)]
+    per_page = 10
+    total_pages = (len(filtered_df) - 1) // per_page + 1
+    start = (page - 1) * per_page
+    end = start + per_page
+    page_books = filtered_df.iloc[start:end]
+    books = []
+
+    for _, row in page_books.iterrows():
+        book = row.to_dict()
+        book['info'] = url_for('book_info', title=book['Title'])
+        book['recommendations_url'] = url_for('book_recommendations', title=book['Title'])
+        book['metric_url'] = url_for('book_metric', title=book['Title'])
+        books.append(book)
+
+    return render_template('favorite.html', books=books, page=page, total_pages=total_pages)
+
+
 @app.route('/book/<title>', methods=['GET'])
 def book_info(title):
     book = df[df['Title'] == title].to_dict(orient='records')
@@ -149,6 +172,17 @@ def like_book():
     else:
         return jsonify({"message": "You already added this book"})
 
+@app.route('/unlike', methods=['POST'])
+@login_required
+def unlike_book():
+    title = request.form.get('title')
+    existing = FavoriteBook.query.filter_by(book_title=title, user_id=current_user.id).first()
+    if existing is None:
+        return jsonify({"message": "You already unkile this book"})
+    else:
+        db.session.delete(existing)
+        db.session.commit()
+        return jsonify({"message": "Book removed successfully"})
 
 @app.route('/search', methods=['GET'])
 def search():

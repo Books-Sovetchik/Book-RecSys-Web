@@ -51,7 +51,8 @@
         <div class="navbar-right">
             {% if current_user.is_authenticated %}
                 <span>Welcome, {{ current_user.username }}!</span>
-                <a href="{{ url_for('logout') }}">Logout</a>
+            <a href="{{ url_for('favorite_books', page=1) }}">Favorite</a>
+            <a href="{{ url_for('logout') }}">Logout</a>
             {% else %}
                 <a href="{{ url_for('login') }}">Login</a>
                 <a href="{{ url_for('register') }}">Register</a>

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}Books List{% endblock %}
+
+{% block content %}
+<div class="container my-4">
+
+    <h1 class="mb-4">Favorite Books</h1>
+    <ul class="list-group mb-4">
+        {% for book in books %}
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+            <div>
+                <a href="{{ book.info }}" class="fw-bold">{{ book.Title }}</a>
+                <div>
+                    <a href="{{ book.recommendations_url }}" class="text-secondary">Recommendations</a>
+                    {% if current_user.is_authenticated %}
+                        <span class="text-muted"> | </span>
+                        <a href="{{ book.metric_url }}" class="text-secondary">Help rate</a>
+                    {% endif %}
+                </div>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+
+    <div class="d-flex justify-content-between">
+        {% if page > 1 %}
+            <a href="{{ url_for('favorite_books', page=page-1) }}" class="btn btn-secondary">Previous</a>
+        {% endif %}
+        <span class="align-self-center">Page {{ page }} of {{ total_pages }}</span>
+        {% if page < total_pages %}
+            <a href="{{ url_for('favorite_books', page=page+1) }}" class="btn btn-secondary">Next</a>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
