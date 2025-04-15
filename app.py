@@ -4,13 +4,12 @@ from flask import Flask, request, jsonify, render_template, url_for, redirect, f
 import pandas as pd
 from flask import request, render_template, url_for
 import logging
-import flask_login
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+from my_models import db
+
 
 from flask_sqlalchemy import SQLAlchemy
-from models import User
-
 
 SRC_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'Book-RecSys', 'src'))
 sys.path.append(SRC_PATH)
@@ -19,21 +18,17 @@ from models.modules import BookDescriptionEmbeddingSimilarity
 from models.modules import RecommendUsingGraph
 from models.modules import EmbeddingsProducer
 from models.modules import SearchBooksByTitle
-app = Flask(__name__)
-app.secret_key = 'your-secret-key-here'
 
-logging.basicConfig(
-    level=logging.INFO,
-    handlers=[
-        logging.FileHandler("flask_requests.log"),
-        logging.StreamHandler() 
-    ]
-)
+app = Flask(__name__)
+app.secret_key = 'your-secret-key-here'  # Change this to a secure secret key
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql+psycopg2://postgres:2006yura@localhost/book_recsys_users'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-db = SQLAlchemy(app)
+db.init_app(app)
+
+# Import User model after db initialization
+from my_models import User
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -43,9 +38,7 @@ login_manager.login_view = 'login'
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-books_users_tap = pd.read_csv('./data/raw_data/books_users_tap.csv')
-books_users_like = pd.read_csv('./data/raw_data/books_users_like.csv')
-
+# Чтение данных из CSV при старте приложения
 df = pd.read_csv('./data/raw_data/LEHABOOKS.csv')
 metric = pd.read_csv('./data/test_data/rating.csv')
 recsys_with_emb = BookDescriptionEmbeddingSimilarity(
@@ -55,8 +48,6 @@ embedding_producer = EmbeddingsProducer()
 search_books_by_title = SearchBooksByTitle('./data/raw_data/LEHABOOKS.csv')
 
 df = df[df['Description'].notna()]
-
-
 
 # Главная страница с пагинацией
 @app.route('/', methods=['GET'])
@@ -85,10 +76,6 @@ def book_info(title):
     book = book[0]
     if not book:
         return "Book not found", 404
-    if current_user.is_authenticated:
-        new_row = {'user_id': current_user.id, 'book_title': book['Title']}
-        books_users_tap.append(new_row)
-
     return render_template('book_info.html', book=book)
 
 @app.route('/book/rec/<title>', methods=['GET'])
@@ -146,17 +133,6 @@ def rate_book():
     # Сохранение изменений в CSV
     metric.to_csv('./data/test_data/rating.csv', index=False)
     return jsonify({"message": "Rating added successfully"})
-
-
-@app.route('/like', methods=['POST'])
-@login_required
-def like_book():
-    book = request.form.get('title')
-    new_row = {'user_id': current_user.id, 'book_title': book['Title']}
-    books_users_like.append(new_row)
-
-    return jsonify({"message": "Book added to favorite"})
-
 
 @app.route('/search', methods=['GET'])
 def search():
@@ -220,6 +196,5 @@ def register():
     return render_template('register.html')
 
 if __name__ == '__main__':
-    # app.run(host='192.168.0.105')
     app.run(host="0.0.0.0", port=3000, debug=True)
     
