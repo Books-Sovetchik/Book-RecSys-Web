@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-     <meta charset="UTF-8">
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- Подключение Bootstrap -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -14,27 +14,33 @@
             padding: 0;
             background-color: #f5f5f5;
         }
+
         .navbar {
             background-color: #333;
             padding: 1rem;
             color: white;
         }
+
         .navbar a {
             color: white;
             text-decoration: none;
             margin-right: 1rem;
         }
+
         .navbar a:hover {
             color: #ddd;
         }
+
         .navbar-right {
             float: right;
         }
+
         .content {
             padding: 2rem;
             max-width: 1200px;
             margin: 0 auto;
         }
+
         .flash-messages {
             padding: 1rem;
             margin-bottom: 1rem;
@@ -46,32 +52,41 @@
     </style>
 </head>
 <body>
-    <div class="navbar">
-        <a href="{{ url_for('home') }}">Home</a>
-        <div class="navbar-right">
-            {% if current_user.is_authenticated %}
-                <span>Welcome, {{ current_user.username }}!</span>
-            <a href="{{ url_for('favorite_books', page=1) }}">Favorite</a>
-            <a href="{{ url_for('logout') }}">Logout</a>
-            {% else %}
-                <a href="{{ url_for('login') }}">Login</a>
-                <a href="{{ url_for('register') }}">Register</a>
-            {% endif %}
-        </div>
+<div class="navbar">
+    <a href="{{ url_for('home') }}">Home</a>
+    <form method="POST" action="{{ url_for('change_llm') }}" style="display:inline;">
+        <select name="llm" onchange="this.form.submit()" class="form-select form-select-sm d-inline w-auto"
+                style="margin-right: 1rem;">
+            <option value="" disabled selected hidden>Select model</option>
+            <option value="our_model">Our Model</option>
+            <option value="other_model">Other Model</option>
+        </select>
+    </form>
+    </form>
+    <div class="navbar-right">
+        {% if current_user.is_authenticated %}
+        <span>Welcome, {{ current_user.username }}!</span>
+        <a href="{{ url_for('favorite_books', page=1) }}">Favorite</a>
+        <a href="{{ url_for('logout') }}">Logout</a>
+        {% else %}
+        <a href="{{ url_for('login') }}">Login</a>
+        <a href="{{ url_for('register') }}">Register</a>
+        {% endif %}
     </div>
-    
-    <div class="content">
-        {% with messages = get_flashed_messages() %}
-            {% if messages %}
-                <div class="flash-messages">
-                    {% for message in messages %}
-                        {{ message }}
-                    {% endfor %}
-                </div>
-            {% endif %}
-        {% endwith %}
-        
-        {% block content %}{% endblock %}
+</div>
+
+<div class="content">
+    {% with messages = get_flashed_messages() %}
+    {% if messages %}
+    <div class="flash-messages">
+        {% for message in messages %}
+        {{ message }}
+        {% endfor %}
     </div>
+    {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+</div>
 </body>
 </html>

@@ -1,10 +1,15 @@
 import sys
 import os
+
+import numpy as np
 from flask import Flask, jsonify, redirect, flash
 import pandas as pd
 from flask import request, render_template, url_for
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
+from jmespath import search
+
 from my_models import db
+from my_models.Rating import Rating
 from my_models.User import User
 from my_models.FavoriteBook import FavoriteBook
 from my_models.TappedBook import TappedBook
@@ -14,10 +19,11 @@ from dotenv import load_dotenv
 SRC_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'Book-RecSys', 'src'))
 sys.path.append(SRC_PATH)
 
-from models.modules import BookDescriptionEmbeddingSimilarity
-from models.modules import RecommendUsingGraph
 from models.modules import EmbeddingsProducer
 from models.modules import SearchBooksByTitle
+from models.modules import Llm
+from models.model import Bibliotekar
+
 
 load_dotenv()
 app = Flask(__name__)
@@ -32,22 +38,23 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
+fs_books = np.load("./data/embeddings/fs_embds.npz", allow_pickle=True)
+search_by_title = SearchBooksByTitle("./data/raw_data/LEHABOOKS.csv")
+
 
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, user_id)
 
-
+recsys = Bibliotekar("./data/models/fs_embds.npz",  "./data/models/model.pth")
 df = pd.read_csv('./data/raw_data/LEHABOOKS.csv')
-metric = pd.read_csv('./data/test_data/rating.csv')
-recsys_with_emb = BookDescriptionEmbeddingSimilarity(
-    "./data/embeddings/books_embeddings_dataset.npy")
-recsys = RecommendUsingGraph("./data/graphs/book_graph.json", recsys_with_emb)
+second_dataset = pd.read_csv('./data/raw_data/kaggle_second_sem/books_data.csv')
 embedding_producer = EmbeddingsProducer()
-search_books_by_title = SearchBooksByTitle('./data/raw_data/LEHABOOKS.csv')
 
 df = df[df['Description'].notna()]
 
+main_model = recsys
+extra_model = Llm()
 
 @app.route('/', methods=['GET'])
 @app.route('/page/<int:page>', methods=['GET'])
@@ -92,7 +99,7 @@ def favorite_books(page=1):
 
 @app.route('/book/<title>', methods=['GET'])
 def book_info(title):
-    book = df[df['Title'] == title].to_dict(orient='records')
+    book = find_book(title)
     book = book[0]
     if not book:
         return "Book not found", 404
@@ -106,13 +113,17 @@ def book_info(title):
 
 @app.route('/book/rec/<title>', methods=['GET'])
 def book_recommendations(title):
-    book = df[df['Title'] == title].to_dict(orient='records')
-
+    book = find_book(title)
     if not book:
         return "Book not found", 404
 
     book = book[0]
-    recommended_books = recsys.find_closest_books(title, n=20)
+    if current_user.is_authenticated:
+
+        embs = [find_emb(b) for b in TappedBook.query.filter_by(user_id=current_user.id).all() ]
+        recommended_books = main_model.predict(find_emb(title), embs)
+    else:
+        recommended_books = main_model.predict(find_emb(title))
     recommended_books = [
         {"name": rec_book[0], "url": url_for('book_info', title=rec_book[0]),
          "description": df[df['Title'] == rec_book[0]]['Description'].to_string(index=False)}
@@ -129,7 +140,9 @@ def book_metric(title):
     if not book:
         return "Book not found", 404
     book = book[0]
-    recommended_books = recsys.find_closest_books(title, n=100)
+    embs = [find_emb(b) for b in TappedBook.query.filter_by(user_id=current_user.id).all()]
+    recommended_books = main_model.predict(find_emb(title), embs)
+
     recommended_books = [
         {"name": rec_book[0], "url": url_for('book_info', title=rec_book[0]),
          "description": df[df['Title'] == rec_book[0]]['Description'].to_string(index=False)}
@@ -142,20 +155,14 @@ def book_metric(title):
 @app.route('/rate', methods=['POST'])
 @login_required
 def rate_book():
-    global metric
     rating = int(request.form.get('rating'))
     source_book = request.form.get('source_book')
     recommended_book = request.form.get('recommended_book')
 
-    new_row = pd.DataFrame([{
-        'Title': source_book,
-        'Title_for_rate': recommended_book,
-        'rate': rating
-    }])
+    rate = Rating(user_id=current_user.id, rate=rating, source_book=source_book, recommended_book=recommended_book)
+    db.session.add(rate)
+    db.session.commit()
 
-    metric = pd.concat([metric, new_row], ignore_index=True)
-
-    metric.to_csv('./data/test_data/rating.csv', index=False)
     return jsonify({"message": "Rating added successfully"})
 
 
@@ -187,7 +194,7 @@ def unlike_book():
 @app.route('/search', methods=['GET'])
 def search():
     title = request.args.get('title')  # Получаем параметр title из строки запроса
-    recommended_books = search_books_by_title.closest_title(title, 10)
+    recommended_books = search_by_title.closest_title(title, 10)
     recommended_books_links = [
         df[df['Title'] == title] for title in recommended_books
         if not df[df['Title'] == title].empty  # Проверка на существование названия в df
@@ -199,7 +206,11 @@ def search():
 def suggest_by_description():
     description = request.args.get('description')  # Получаем параметр title из строки запроса
     emb = embedding_producer.create_embedding(description)
-    recommended_books = recsys_with_emb.recommend_by_embedding(emb.T, n=20)
+    if current_user.is_authenticated:
+        embs = [find_emb(b) for b in TappedBook.query.filter_by(user_id=current_user.id).all()]
+        recommended_books = main_model.predict(emb, embs)
+    else:
+        recommended_books = main_model.predict(emb)
     recommended_books = [
         {"name": rec_book[0], "url": url_for('book_info', title=rec_book[0]),
          "description": df[df['Title'] == rec_book[0]]['Description'].to_string(index=False)}
@@ -249,6 +260,33 @@ def register():
         return redirect(url_for('login'))
     return render_template('register.html')
 
+
+@app.route('/change/llm', methods=['POST'])
+def change_llm():
+    global main_model
+    llm_choice = request.form.get("llm")
+
+    match llm_choice:
+        case "our_model":
+            flash("Changed successfully")
+            main_model = recsys
+        case "other_model":
+            flash("Changed successfully")
+            main_model = extra_model
+        case _:
+            flash("Unknown model selected")
+
+    return redirect(url_for('home'))
+
+def find_book(title):
+    book = df.loc[df['Title'] == title]
+    if book.empty:
+        book = second_dataset.loc[second_dataset['Title'] == title]
+
+    return book.to_dict(orient='records')
+
+def find_emb(title):
+    emb = second_dataset[second_dataset["titles"] == title]["embeddings"]
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=3000, debug=True)
