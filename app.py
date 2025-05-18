@@ -22,7 +22,7 @@ sys.path.append(SRC_PATH)
 from models.modules import EmbeddingsProducer
 from models.modules import SearchBooksByTitle
 from models.modules import Llm
-from models.model import Bibliotekar
+# from models.model import Bibliotekar
 
 
 load_dotenv()
@@ -39,6 +39,7 @@ login_manager.init_app(app)
 login_manager.login_view = 'login'
 
 fs_books = np.load("./data/embeddings/fs_embds.npz", allow_pickle=True)
+
 search_by_title = SearchBooksByTitle("./data/raw_data/LEHABOOKS.csv")
 
 
@@ -46,12 +47,13 @@ search_by_title = SearchBooksByTitle("./data/raw_data/LEHABOOKS.csv")
 def load_user(user_id):
     return db.session.get(User, user_id)
 
-recsys = Bibliotekar("./data/models/fs_embds.npz",  "./data/models/model.pth")
+# recsys = Bibliotekar("./data/models/fs_embds.npz",  "./data/models/model.pth")
+recsys = Llm()
 df = pd.read_csv('./data/raw_data/LEHABOOKS.csv')
 second_dataset = pd.read_csv('./data/raw_data/kaggle_second_sem/books_data.csv')
 embedding_producer = EmbeddingsProducer()
 
-df = df[df['Description'].notna()]
+df = df[df['description'].notna()]
 
 main_model = recsys
 extra_model = Llm()
@@ -101,6 +103,8 @@ def favorite_books(page=1):
 def book_info(title):
     book = find_book(title)
     book = book[0]
+
+    print(book)
     if not book:
         return "Book not found", 404
     if current_user.is_authenticated:
@@ -120,13 +124,13 @@ def book_recommendations(title):
     book = book[0]
     if current_user.is_authenticated:
 
-        embs = [find_emb(b) for b in TappedBook.query.filter_by(user_id=current_user.id).all() ]
+        embs = [find_emb(b.book_title) for b in TappedBook.query.filter_by(user_id=current_user.id).all()]
         recommended_books = main_model.predict(find_emb(title), embs)
     else:
         recommended_books = main_model.predict(find_emb(title))
     recommended_books = [
         {"name": rec_book[0], "url": url_for('book_info', title=rec_book[0]),
-         "description": df[df['Title'] == rec_book[0]]['Description'].to_string(index=False)}
+         "description": df[df['Title'] == rec_book[0]]['description'].to_string(index=False)}
         for rec_book in recommended_books
     ]
     return render_template('book_recommendations.html', recommended_books=recommended_books)
@@ -135,8 +139,7 @@ def book_recommendations(title):
 @app.route('/metric/<title>', methods=['GET'])
 @login_required
 def book_metric(title):
-    book = df[df['Title'] == title].to_dict(orient='records')
-
+    book = find_book(title)
     if not book:
         return "Book not found", 404
     book = book[0]
@@ -145,7 +148,7 @@ def book_metric(title):
 
     recommended_books = [
         {"name": rec_book[0], "url": url_for('book_info', title=rec_book[0]),
-         "description": df[df['Title'] == rec_book[0]]['Description'].to_string(index=False)}
+         "description": df[df['Title'] == rec_book[0]]['description'].to_string(index=False)}
         for rec_book in recommended_books
     ]
 
@@ -213,7 +216,7 @@ def suggest_by_description():
         recommended_books = main_model.predict(emb)
     recommended_books = [
         {"name": rec_book[0], "url": url_for('book_info', title=rec_book[0]),
-         "description": df[df['Title'] == rec_book[0]]['Description'].to_string(index=False)}
+         "description": df[df['Title'] == rec_book[0]]['description'].to_string(index=False)}
         for rec_book in recommended_books
         if not df[df['Title'] == rec_book[0]].empty
     ]
@@ -285,8 +288,19 @@ def find_book(title):
 
     return book.to_dict(orient='records')
 
+
 def find_emb(title):
-    emb = second_dataset[second_dataset["titles"] == title]["embeddings"]
+    titles = fs_books["titles"]
+    embeddings = fs_books["embeddings"]
+
+    title = str(title)
+
+    try:
+        index = np.where(titles == title)[0][0]
+        return embeddings[index]
+    except IndexError:
+        print(f"Title '{title}' not found.")
+        return None
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=3000, debug=True)

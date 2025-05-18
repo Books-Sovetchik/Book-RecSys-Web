@@ -11,7 +11,7 @@
         {% for rec_book in recommended_books[:10] %}
         <li class="list-group-item">
             <a href="{{ url_for('book_info', title=rec_book['Title'].iloc[0]) }}" class="fw-bold">{{ rec_book['Title'].iloc[0] }}</a>
-            <p><strong>Description:</strong> {{ rec_book['Description'].iloc[0] }}</p>
+            <p><strong>Description:</strong> {{ rec_book['description'].iloc[0] }}</p>
             {% if rec_book.get('Category', '').iloc[0] %}
                 <p><strong>Category:</strong> {{ rec_book['Category'].iloc[0] }}</p>
             {% endif %}
