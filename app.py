@@ -16,13 +16,22 @@ from my_models.TappedBook import TappedBook
 from flask_sqlalchemy import SQLAlchemy
 from dotenv import load_dotenv
 
+#paths
 SRC_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'Book-RecSys', 'src'))
 sys.path.append(SRC_PATH)
+fs_path = "./data/embeddings/fs_embds.npz"
+ss_path = "./data/embeddings/ss_embds.npz"
+graph_path = "./data/graphs/book_graph.json"
+sequences_path = "./data/sequences/sequences.json"
+main_lib_path = "./data/raw_data/LEHABOOKS.csv"
+model_path = "./data/models/model.pth"
+second_dataset_path = './data/raw_data/kaggle_second_sem/books_data.csv'
+
 
 from models.modules import EmbeddingsProducer
 from models.modules import SearchBooksByTitle
 from models.modules import Llm
-# from models.model import Bibliotekar
+from models.model import Bibliotekar
 
 
 load_dotenv()
@@ -38,19 +47,14 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-fs_books = np.load("./data/embeddings/fs_embds.npz", allow_pickle=True)
+fs_books = np.load(fs_path, allow_pickle=True)
+ss_books = np.load(ss_path, allow_pickle=True)
 
-search_by_title = SearchBooksByTitle("./data/raw_data/LEHABOOKS.csv")
+search_by_title = SearchBooksByTitle(main_lib_path)
 
-
-@login_manager.user_loader
-def load_user(user_id):
-    return db.session.get(User, user_id)
-
-# recsys = Bibliotekar("./data/models/fs_embds.npz",  "./data/models/model.pth")
-recsys = Llm()
-df = pd.read_csv('./data/raw_data/LEHABOOKS.csv')
-second_dataset = pd.read_csv('./data/raw_data/kaggle_second_sem/books_data.csv')
+recsys = Bibliotekar(fs_path, ss_path, graph_path, sequences_path, main_lib_path, model_path)
+df = pd.read_csv(main_lib_path)
+second_dataset = pd.read_csv(second_dataset_path)
 embedding_producer = EmbeddingsProducer()
 
 df = df[df['description'].notna()]
@@ -58,9 +62,16 @@ df = df[df['description'].notna()]
 main_model = recsys
 extra_model = Llm()
 
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    return db.session.get(User, user_id)
+
 @app.route('/', methods=['GET'])
 @app.route('/page/<int:page>', methods=['GET'])
 def home(page=1):
+    find_emb("Flu")
     per_page = 10
     total_pages = (len(df) // per_page) + 1
     start = (page - 1) * per_page
@@ -81,7 +92,7 @@ def home(page=1):
 def favorite_books(page=1):
     favorites = FavoriteBook.query.filter_by(user_id=current_user.id).all()
     favorite_titles = [f.book_title for f in favorites]
-    filtered_df = df[df['Title'].isin(favorite_titles)]
+    filtered_df = df[df['Title'].isin(favorite_titles)].drop_duplicates(subset='Title')
     per_page = 10
     total_pages = (len(filtered_df) - 1) // per_page + 1
     start = (page - 1) * per_page
@@ -102,11 +113,10 @@ def favorite_books(page=1):
 @app.route('/book/<title>', methods=['GET'])
 def book_info(title):
     book = find_book(title)
-    book = book[0]
-
-    print(book)
     if not book:
         return "Book not found", 404
+    book = book[0]
+
     if current_user.is_authenticated:
         tapped_book = TappedBook(book_title=book['Title'], user_id=current_user.id)
         db.session.add(tapped_book)
@@ -125,15 +135,18 @@ def book_recommendations(title):
     if current_user.is_authenticated:
 
         embs = [find_emb(b.book_title) for b in TappedBook.query.filter_by(user_id=current_user.id).all()]
-        recommended_books = main_model.predict(find_emb(title), embs)
+        recommended_books = main_model.predict_context(find_emb(title), embs, k=20)
     else:
-        recommended_books = main_model.predict(find_emb(title))
-    recommended_books = [
-        {"name": rec_book[0], "url": url_for('book_info', title=rec_book[0]),
-         "description": df[df['Title'] == rec_book[0]]['description'].to_string(index=False)}
-        for rec_book in recommended_books
-    ]
-    return render_template('book_recommendations.html', recommended_books=recommended_books)
+        recommended_books = main_model.predict(find_emb(title), k=10)
+    recommended_books = list(recommended_books["titles"])
+    rec_books_dicts = []
+    for rec_book in recommended_books:
+        rec_book = find_book(rec_book)[0]
+        print(rec_book)
+        rec_books_dicts.append({"name": rec_book["Title"], "url": url_for('book_info', title=rec_book["Title"]),
+         "description": rec_book["description"]})
+    print(rec_books_dicts)
+    return render_template('book_recommendations.html', recommended_books=rec_books_dicts)
 
 
 @app.route('/metric/<title>', methods=['GET'])
@@ -144,7 +157,7 @@ def book_metric(title):
         return "Book not found", 404
     book = book[0]
     embs = [find_emb(b) for b in TappedBook.query.filter_by(user_id=current_user.id).all()]
-    recommended_books = main_model.predict(find_emb(title), embs)
+    recommended_books = main_model.predict_context(find_emb(title), embs, k=20)
 
     recommended_books = [
         {"name": rec_book[0], "url": url_for('book_info', title=rec_book[0]),
@@ -211,9 +224,10 @@ def suggest_by_description():
     emb = embedding_producer.create_embedding(description)
     if current_user.is_authenticated:
         embs = [find_emb(b) for b in TappedBook.query.filter_by(user_id=current_user.id).all()]
-        recommended_books = main_model.predict(emb, embs)
+        recommended_books = main_model.predict_context(emb, embs, k=10)
     else:
-        recommended_books = main_model.predict(emb)
+        recommended_books = main_model.predict(emb, k=20)
+    recommended_books = list(recommended_books["titles"])
     recommended_books = [
         {"name": rec_book[0], "url": url_for('book_info', title=rec_book[0]),
          "description": df[df['Title'] == rec_book[0]]['description'].to_string(index=False)}
@@ -285,21 +299,19 @@ def find_book(title):
     book = df.loc[df['Title'] == title]
     if book.empty:
         book = second_dataset.loc[second_dataset['Title'] == title]
-
     return book.to_dict(orient='records')
 
 
 def find_emb(title):
-    titles = fs_books["titles"]
-    embeddings = fs_books["embeddings"]
-
-    title = str(title)
-
+    print(title)
     try:
-        index = np.where(titles == title)[0][0]
-        return embeddings[index]
-    except IndexError:
-        print(f"Title '{title}' not found.")
+        mask = fs_books["titles"] == str(title)
+        if not np.any(mask):
+            print(f"[find_emb] Title '{title}' not found in embeddings.")
+            return None
+        return fs_books["embeddings"][mask][0]
+    except Exception as e:
+        print(f"[find_emb] Error accessing embeddings: {e}")
         return None
 
 if __name__ == '__main__':
