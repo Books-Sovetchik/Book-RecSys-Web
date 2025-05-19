@@ -212,8 +212,7 @@ def search():
     title = request.args.get('title')  # Получаем параметр title из строки запроса
     recommended_books = search_by_title.closest_title(title, 10)
     recommended_books_links = [
-        df[df['Title'] == title] for title in recommended_books
-        if not df[df['Title'] == title].empty  # Проверка на существование названия в df
+        find_book(title)[0] for title in recommended_books
     ]
     return render_template('closest_titles.html', recommended_books=recommended_books_links)
 
