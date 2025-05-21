@@ -52,7 +52,7 @@ ss_books = np.load(ss_path, allow_pickle=True)
 
 search_by_title = SearchBooksByTitle(main_lib_path)
 
-recsys = Bibliotekar(fs_path, ss_path, graph_path, sequences_path, main_lib_path, model_path)
+recsys = Bibliotekar(fs_path, ss_path, graph_path, sequences_path, second_dataset_path, model_path)
 df = pd.read_csv(main_lib_path)
 second_dataset = pd.read_csv(second_dataset_path)
 embedding_producer = EmbeddingsProducer()
@@ -133,8 +133,10 @@ def book_recommendations(title):
 
     book = book[0]
     if current_user.is_authenticated:
+        embs = np.array([
+            emb for emb in (find_emb(b.book_title) for b in TappedBook.query.filter_by(user_id=current_user.id).all())
+            if emb is not None])
 
-        embs = np.array([find_emb(b.book_title) for b in TappedBook.query.filter_by(user_id=current_user.id).all()])
         recommended_books = main_model.predict_context(last_books=embs,last_book=find_emb(title), last_book_title=title, k=10)
     else:
         recommended_books = main_model.predict(find_emb(title), k=10)
