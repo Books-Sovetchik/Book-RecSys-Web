@@ -27,7 +27,6 @@ main_lib_path = "./data/raw_data/LEHABOOKS.csv"
 model_path = "./data/models/model.pth"
 second_dataset_path = './data/raw_data/kaggle_second_sem/books_data.csv'
 
-
 from models.modules import EmbeddingsProducer
 from models.modules import SearchBooksByTitle
 from models.modules import Llm
@@ -49,6 +48,13 @@ login_manager.login_view = 'login'
 
 fs_books = np.load(fs_path, allow_pickle=True)
 ss_books = np.load(ss_path, allow_pickle=True)
+embeddings_fs = fs_books["embeddings"]
+embeddings_ss = ss_books["embeddings"]
+titles_fs = fs_books["titles"]  
+titles_ss = ss_books["titles"]
+
+title_index_fs = {title: i for i, title in enumerate(titles_fs)}
+title_index_ss = {title: i for i, title in enumerate(titles_ss)}
 
 search_by_title = SearchBooksByTitle(main_lib_path)
 
@@ -130,21 +136,31 @@ def book_recommendations(title):
     book = find_book(title)
     if not book:
         return "Book not found", 404
-
     book = book[0]
     if current_user.is_authenticated:
         embs = np.array([
             emb for emb in (find_emb(b.book_title) for b in TappedBook.query.filter_by(user_id=current_user.id).all())
             if emb is not None])
-
         recommended_books = main_model.predict_context(last_books=embs,last_book=find_emb(title), last_book_title=title, k=10)
     else:
         recommended_books = main_model.predict(find_emb(title), k=10)
+
     rec_books_dicts = []
+    added_books = set()
+
     for rec_book in recommended_books:
         rec_book = find_book(rec_book)[0]
-        rec_books_dicts.append({"name": rec_book["Title"], "url": url_for('book_info', title=rec_book["Title"]),
-         "description": rec_book["description"]})
+        author_and_title = (rec_book["Title"], rec_book.get("Author", "").strip())
+
+        if author_and_title in added_books:
+            continue
+
+        added_books.add(author_and_title)
+        rec_books_dicts.append({
+            "name": rec_book["Title"],
+            "url": url_for('book_info', title=rec_book["Title"]),
+            "description": rec_book["description"]
+        })
     return render_template('book_recommendations.html', recommended_books=rec_books_dicts)
 
 
@@ -308,19 +324,20 @@ def find_book(title):
         book = second_dataset.loc[second_dataset['Title'] == title]
     return book.to_dict(orient='records')
 
-
 def find_emb(title):
     try:
         title_str = str(title)
-        indices = np.where(fs_books["titles"] == title_str)[0]
+        index = title_index_fs.get(title_str)
+        if index is not None:
+            return embeddings_fs[index]
 
-        if len(indices) == 0:
-            print(f"[find_emb] Title '{title_str}' not found in embeddings.")
-            return None
-        return fs_books["embeddings"][indices[0]]
+        index = title_index_ss.get(title_str)
+        if index is not None:
+            return embeddings_ss[index]
     except Exception as e:
         print(f"[find_emb] Error accessing embeddings: {e}")
-        return None
 
+    return None
+    
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=3000, debug=True)
