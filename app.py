@@ -63,7 +63,7 @@ df = pd.read_csv(main_lib_path)
 second_dataset = pd.read_csv(second_dataset_path)
 embedding_producer = EmbeddingsProducer()
 
-df = df[df['description'].notna()]
+# df = df[df['description'].notna()]
 
 main_model = recsys
 extra_model = Llm()
@@ -159,7 +159,7 @@ def book_recommendations(title):
         rec_books_dicts.append({
             "name": rec_book["Title"],
             "url": url_for('book_info', title=rec_book["Title"]),
-            "description": rec_book["description"]
+            "description": "empty" if pd.isna(rec_book["description"]) else rec_book["description"]
         })
     return render_template('book_recommendations.html', recommended_books=rec_books_dicts)
 
@@ -172,21 +172,30 @@ def book_metric(title):
         return "Book not found", 404
     book = book[0]
     if current_user.is_authenticated:
-
-        embs = np.array([find_emb(b.book_title) for b in TappedBook.query.filter_by(user_id=current_user.id).all()])
-        print(len(embs), len(embs[0]))
-        print(TappedBook.query.filter_by(user_id=current_user.id).count())
+        embs = np.array([
+            emb for emb in (find_emb(b.book_title) for b in TappedBook.query.filter_by(user_id=current_user.id).all())
+            if emb is not None])
         recommended_books = main_model.predict_context(last_books=embs, last_book=find_emb(title),
                                                        last_book_title=title, k=10)
-        print(recommended_books)
     else:
         recommended_books = main_model.predict(find_emb(title), k=10)
+
     rec_books_dicts = []
+    added_books = set()
+
     for rec_book in recommended_books:
         rec_book = find_book(rec_book)[0]
-        print(rec_book)
-        rec_books_dicts.append({"name": rec_book["Title"], "url": url_for('book_info', title=rec_book["Title"]),
-                                "description": rec_book["description"]})
+        author_and_title = (rec_book["Title"], rec_book.get("Author", "").strip())
+
+        if author_and_title in added_books:
+            continue
+
+        added_books.add(author_and_title)
+        rec_books_dicts.append({
+            "name": rec_book["Title"],
+            "url": url_for('book_info', title=rec_book["Title"]),
+            "description": "empty" if pd.isna(rec_book["description"]) else rec_book["description"]
+        })
 
     return render_template('book_metric.html', book=book, recommended_books=rec_books_dicts)
 
@@ -250,13 +259,22 @@ def suggest_by_description():
         recommended_books = main_model.predict_context(last_books=embs,last_book=embedding_producer.create_embedding(description), last_book_title="", k=10)
     else:
         recommended_books = main_model.predict(last_book=embedding_producer.create_embedding(description), k=10)
-    print(recommended_books)
     rec_books_dicts = []
+    added_books = set()
+
     for rec_book in recommended_books:
         rec_book = find_book(rec_book)[0]
-        print("recs 2snnd iter ", rec_book)
-        rec_books_dicts.append({"name": rec_book["Title"], "url": url_for('book_info', title=rec_book["Title"]),
-         "description": rec_book["description"]})
+        author_and_title = (rec_book["Title"], rec_book.get("Author", "").strip())
+
+        if author_and_title in added_books:
+            continue
+
+        added_books.add(author_and_title)
+        rec_books_dicts.append({
+            "name": rec_book["Title"],
+            "url": url_for('book_info', title=rec_book["Title"]),
+            "description": "empty" if pd.isna(rec_book["description"]) else rec_book["description"]
+        })
 
     return render_template('book_recommendations.html', recommended_books=rec_books_dicts)
 
@@ -311,8 +329,8 @@ def change_llm():
             flash("Changed successfully")
             main_model = recsys
         case "other_model":
-            flash("Changed successfully")
-            main_model = extra_model
+            flash("We don't have API key yet")
+            # main_model = extra_model
         case _:
             flash("Unknown model selected")
 
