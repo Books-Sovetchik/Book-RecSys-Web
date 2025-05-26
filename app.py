@@ -6,7 +6,6 @@ from flask import Flask, jsonify, redirect, flash
 import pandas as pd
 from flask import request, render_template, url_for
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
-from jmespath import search
 
 from my_models import db
 from my_models.Rating import Rating
